@@ -7,7 +7,7 @@ async function startServer() {
     
   try {
     await redis.ping();
-    console.log('Reddis connection successful');
+    console.log('Redis connection successful');
 
     app.listen(config.port, () => {
       console.log(`Server is running on port ${config.port}`);

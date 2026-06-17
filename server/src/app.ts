@@ -23,9 +23,10 @@ app.use(
     next: express.NextFunction,
   ) => {
     if (err instanceof AppError) {
-      return res
+      res
         .status(err.statusCode)
         .json({ status: 'error', message: err.message });
+      return;
     }
     console.error('Unexpected error: ', err);
     res

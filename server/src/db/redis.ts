@@ -1,6 +1,6 @@
-import 'dotenv/config';
 import { Redis } from 'ioredis';
 import { config } from '../config/env.js';
+import { AppError } from '../shared/errors/AppError.js';
 
 const redis = new Redis({
   host: config.redis.host,
@@ -9,6 +9,9 @@ const redis = new Redis({
   lazyConnect: true,
 });
 
-redis.on('error', (err: Error) => console.error('Redis error: ' + err));
+redis.on('error', (err: Error) => {
+  console.error(err);
+  throw new AppError(err.message);
+});
 
 export default redis;
