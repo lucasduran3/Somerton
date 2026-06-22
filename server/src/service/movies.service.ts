@@ -73,4 +73,4 @@ async function withCache<T>(
   return data;
 }
 
-export const movieService = { getGenres, searchMovies };
+export const moviesService = { getGenres, searchMovies };
