@@ -18,7 +18,7 @@ export const config = {
   tmdb: {
     apiKey: requireEnv('TMDB_API_KEY'),
     baseUrl: requireEnv('TMDB_BASE_URL'),
-    accessToken: require('TMDB_ACCESS_TOKEN')
+    accessToken: requireEnv('TMDB_ACCESS_TOKEN')
   },
   nodeEnv: (process.env.NODE_ENV ?? 'development') as
     | 'development'
