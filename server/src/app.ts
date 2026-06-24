@@ -17,7 +17,7 @@ app.use(
 app.use('/health', healthRouter);
 app.use('/api/movies', movieRouter);
 
-// Global error handler
+// Error Handler
 app.use(errorHandler);
 
 export default app;
