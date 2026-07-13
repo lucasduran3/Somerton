@@ -231,6 +231,9 @@ async function sendMessageHandler(
   };
 
   parsedRoom.messages.push(message);
+  if (parsedRoom.messages.length >= 500) {
+    parsedRoom.messages.shift();
+  }
   const ttl = await redis.ttl(`room:${data.roomId}`);
   try {
     await redis.set(

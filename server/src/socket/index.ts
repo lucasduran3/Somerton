@@ -5,9 +5,17 @@ import { registerRoomHandlers } from './room.handlers.js';
 let io: Server;
 
 export function initSocket(httpServer: HttpServer) {
-  io = new Server(httpServer);
+  io = new Server(httpServer, {
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 15000,
+      skipMiddlewares: true,
+    },
+  });
 
   io.on('connection', (socket) => {
+    if (!socket.recovered) {
+      socket.data.roomId = null;
+    }
     registerRoomHandlers(io, socket);
   });
 }
