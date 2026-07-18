@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import redis from '../db/redis.js';
 import { CreateRoomData, Message, Room } from '../types/socket.types.js';
 import { randomUUID } from 'crypto';
+import { generateUniqueName } from '../utils/uniqueNameGenerator.js';
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
   socket.on('room:create', (data: CreateRoomData) =>
@@ -45,13 +46,15 @@ async function createRoomHandler(socket: Socket, data: CreateRoomData) {
     return;
   }
 
+  socket.data.username = generateUniqueName([]);
+
   const room: Room = {
     id: randomUUID(),
     movieId: data.movieId,
     duration: data.duration,
     maxUsers: data.maxUsers,
-    ownerId: socket.id,
-    users: [socket.id],
+    ownerId: socket.data.username,
+    users: [socket.data.username],
     messages: [],
     createdAt: Date.now(),
   };
@@ -61,7 +64,6 @@ async function createRoomHandler(socket: Socket, data: CreateRoomData) {
       .multi()
       .set(`room:${room.id}`, JSON.stringify(room), 'EX', room.duration * 60)
       .set(`room:movie:${room.movieId}`, room.id, 'EX', room.duration * 60)
-      .set(`room:owner:${socket.id}`, room.id, 'EX', room.duration * 60)
       .exec();
     await socket.join(room.id);
     socket.emit('room:created', room);
@@ -91,7 +93,9 @@ async function joinRoomHandler(socket: Socket, data: { roomId: string }) {
     return;
   }
 
-  parsedRoom.users.push(socket.id);
+  socket.data.username = generateUniqueName(parsedRoom.users);
+
+  parsedRoom.users.push(socket.data.username);
   const ttl = await redis.ttl(`room:${data.roomId}`);
   try {
     await redis.set(
@@ -106,7 +110,9 @@ async function joinRoomHandler(socket: Socket, data: { roomId: string }) {
     socket.data.roomId = data.roomId;
 
     socket.emit('room:joined', parsedRoom);
-    socket.to(data.roomId).emit('room:user-joined', { userId: socket.id });
+    socket
+      .to(data.roomId)
+      .emit('room:user-joined', { username: socket.data.username });
   } catch (error) {
     socket.emit('room:error', {
       message: 'Error while trying to enter the room.',
@@ -131,7 +137,7 @@ async function leaveRoomHandler(
   }
   const parsedRoom: Room = JSON.parse(room);
 
-  const isOwner = await redis.exists(`room:owner:${socket.id}`);
+  const isOwner = socket.data.username === parsedRoom.ownerId;
   if (isOwner) {
     try {
       await closeRoom(io, parsedRoom);
@@ -143,7 +149,7 @@ async function leaveRoomHandler(
     return;
   }
 
-  parsedRoom.users = parsedRoom.users.filter((e) => e !== socket.id);
+  parsedRoom.users = parsedRoom.users.filter((e) => e !== socket.data.username);
 
   const ttl = await redis.ttl(`room:${data.roomId}`);
   try {
@@ -157,7 +163,9 @@ async function leaveRoomHandler(
 
     await socket.leave(data.roomId);
     socket.emit('room:left', parsedRoom);
-    socket.to(data.roomId).emit('room:user-left', { userId: socket.id });
+    socket
+      .to(data.roomId)
+      .emit('room:user-left', { username: socket.data.username });
   } catch (error) {
     socket.emit('room:error', {
       message: 'Error while trying to leave the room.',
@@ -182,7 +190,7 @@ async function deleteRoomHandler(
   }
   const parsedRoom: Room = JSON.parse(room);
 
-  const isOwner = await redis.exists(`room:owner:${socket.id}`);
+  const isOwner = socket.data.username === parsedRoom.ownerId;
   if (!isOwner) {
     socket.emit('room:error', {
       message: 'You are not the owner of this room.',
@@ -225,7 +233,7 @@ async function sendMessageHandler(
   }
 
   const message: Message = {
-    userId: socket.id,
+    userId: socket.data.username,
     text: sanitized,
     sentAt: Date.now(),
   };
@@ -255,11 +263,7 @@ async function sendMessageHandler(
   ------------- HELPERS -----------
  */
 async function closeRoom(io: Server, room: Room) {
-  await redis.del(
-    `room:${room.id}`,
-    `room:movie:${room.movieId}`,
-    `room:owner:${room.ownerId}`,
-  );
+  await redis.del(`room:${room.id}`, `room:movie:${room.movieId}`);
   io.in(room.id).emit('room:closed');
   io.in(room.id).socketsLeave(room.id);
 }
@@ -271,13 +275,13 @@ async function disconnectFromRoom(io: Server, socket: Socket, roomId: string) {
 
   const parsedRoom: Room = JSON.parse(room);
 
-  const isOwner = await redis.exists(`room:owner:${socket.id}`);
+  const isOwner = socket.data.username === parsedRoom.ownerId;
   if (isOwner) {
     await closeRoom(io, parsedRoom);
     return;
   }
 
-  parsedRoom.users = parsedRoom.users.filter((e) => e !== socket.id);
+  parsedRoom.users = parsedRoom.users.filter((e) => e !== socket.data.username);
 
   const ttl = await redis.ttl(`room:${roomId}`);
   try {
@@ -290,7 +294,9 @@ async function disconnectFromRoom(io: Server, socket: Socket, roomId: string) {
     );
 
     await socket.leave(roomId);
-    socket.to(roomId).emit('room:user-left', { userId: socket.id });
+    socket
+      .to(roomId)
+      .emit('room:user-left', { username: socket.data.username });
   } catch (error) {
     socket.to(roomId).emit('room:error', {
       message: 'Error while trying to leave the room.',
