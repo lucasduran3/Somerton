@@ -20,6 +20,9 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
   socket.on('message:send', (data: { roomId: string; text: string }) =>
     sendMessageHandler(io, socket, data),
   );
+  socket.on('room:kick', (data: { roomId: string; userToRemove: string }) => {
+    kickUserHandler(io, socket, data);
+  });
   socket.on('disconnect', async () => {
     const roomId = socket.data.roomId;
     await disconnectFromRoom(io, socket, roomId);
@@ -256,6 +259,81 @@ async function sendMessageHandler(
   } catch (error) {
     socket.emit('message:error', { message: 'Error trying to send message.' });
   }
+}
+
+async function kickUserHandler(
+  io: Server,
+  socket: Socket,
+  data: { roomId: string; userToRemove: string },
+) {
+  if (!socket.rooms.has(data.roomId)) {
+    socket.emit('room:error', { message: 'You are not in this room.' });
+    return;
+  }
+
+  const room = await redis.get(`room:${data.roomId}`);
+  if (!room) {
+    socket.emit('room:error', { message: 'The room does not exist.' });
+    return;
+  }
+
+  const parsedRoom: Room = JSON.parse(room);
+
+  if (socket.data.username !== parsedRoom.ownerId) {
+    socket.emit('room:error', {
+      message: 'You are not the owner of the room.',
+    });
+    return;
+  }
+
+  if (data.userToRemove === parsedRoom.ownerId) {
+    socket.emit('room:error', {
+      message: 'You can not remove the room owner.',
+    });
+    return;
+  }
+
+  if (!parsedRoom.users.includes(data.userToRemove)) {
+    socket.emit('room:error', {
+      message: 'The user to be removed is not in the room.',
+    });
+    return;
+  }
+
+  const sockets = await io.in(data.roomId).fetchSockets();
+  const targetSocket = sockets.find(
+    (e) => e.data.username === data.userToRemove,
+  );
+  if (!targetSocket) {
+    socket.emit('room:error', {
+      message: 'The socket of the user to be removed was not found.',
+    });
+    return;
+  }
+
+  parsedRoom.users = parsedRoom.users.filter((e) => e !== data.userToRemove);
+  const ttl = await redis.ttl(`room:${data.roomId}`);
+  try {
+    await redis.set(
+      `room:${data.roomId}`,
+      JSON.stringify(parsedRoom),
+      'EX',
+      ttl,
+      'XX',
+    );
+  } catch (error) {
+    socket.emit('room:error', {
+      message: 'Error while trying to eject a user from the room.',
+    });
+    return;
+  }
+
+  targetSocket.leave(data.roomId);
+  targetSocket.emit('room:kicked', {
+    message: 'You have been kicked out by the room owner.',
+  });
+
+  io.in(data.roomId).emit('room:user-kicked', { username: data.userToRemove });
 }
 
 /**
