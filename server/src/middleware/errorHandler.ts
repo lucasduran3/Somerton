@@ -2,11 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../shared/errors/AppError.js';
 
-export async function errorHandler(
+export function errorHandler(
   error: Error,
   req: Request,
   res: Response,
-  nex: NextFunction,
+  next: NextFunction,
 ) {
   if (error instanceof AppError) {
     res
