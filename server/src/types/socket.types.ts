@@ -1,3 +1,5 @@
+import { Movie } from './tmdb.types.js';
+
 export interface Message {
   userId: string;
   text: string;
@@ -6,7 +8,7 @@ export interface Message {
 
 export interface Room {
   id: string;
-  movieId: number;
+  movie: Movie;
   duration: number;
   maxUsers: number;
   ownerId: string;
@@ -16,7 +18,7 @@ export interface Room {
 }
 
 export interface CreateRoomData {
-  movieId: number;
+  movie: Movie;
   duration: number;
   maxUsers: number;
 }
