@@ -158,7 +158,6 @@ async function substractMoviesFromSearchIndex(
       },
     );
 
-    rawCachedMovies = null;
     return cachedMovies;
   } catch (error) {
     console.error('Error al obtener películas de la búsqueda en cache:', error);

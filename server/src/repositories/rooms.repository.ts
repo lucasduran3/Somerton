@@ -2,7 +2,7 @@ import { Room } from '../types/socket.types.js';
 import redis from '../db/redis.js';
 import { AppError } from '../shared/errors/AppError.js';
 
-export async function createRoom(room: Room): Promise<void> {
+async function createRoom(room: Room): Promise<void> {
   const multi = redis.multi();
   multi.set(`room:${room.id}`, JSON.stringify(room), 'EX', room.duration * 60);
   multi.set(`room:movie:${room.movie.id}`, room.id, 'EX', room.duration * 60);
@@ -15,10 +15,7 @@ export async function createRoom(room: Room): Promise<void> {
   await multi.exec();
 }
 
-export async function deleteRoom(
-  roomId: string,
-  movieId: number,
-): Promise<void> {
+async function deleteRoom(roomId: string, movieId: number): Promise<void> {
   await redis
     .multi()
     .del(`room:${roomId}`, `room:movie:${movieId}`)
@@ -27,7 +24,7 @@ export async function deleteRoom(
     .exec();
 }
 
-export async function setRoomCache(room: Room): Promise<void> {
+async function setRoomCache(room: Room): Promise<void> {
   const ttl = await redis.ttl(`room:${room.id}`);
 
   if (ttl < 0) {
@@ -37,7 +34,7 @@ export async function setRoomCache(room: Room): Promise<void> {
   await redis.set(`room:${room.id}`, JSON.stringify(room), 'EX', ttl, 'XX');
 }
 
-export async function updateRoom(room: Room): Promise<void> {
+async function updateRoom(room: Room): Promise<void> {
   const ttl = await redis.ttl(`room:${room.id}`);
 
   if (ttl < 0) {
@@ -59,16 +56,53 @@ export async function updateRoom(room: Room): Promise<void> {
   await multi.exec();
 }
 
-export async function getActiveRooms(
-  start: number,
-  end: number,
-): Promise<string[]> {
+async function getActiveRooms(start: number, end: number): Promise<string[]> {
   return await redis.zrevrange('rooms:active', start, end);
 }
 
-export async function getAvailableRooms(
+async function getAvailableRooms(
   start: number,
   end: number,
 ): Promise<string[]> {
   return await redis.zrevrange('rooms:available', start, end);
 }
+
+async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
+  if (roomsIds.length === 0) return [];
+
+  const pipeline = redis.pipeline();
+  roomsIds.forEach((id) => {
+    pipeline.get(`room:${id}`);
+  });
+
+  try {
+    let rawRooms = await pipeline.exec();
+    if (!rawRooms) return [];
+
+    const rooms = rawRooms
+      .map(([error, result]) => {
+        if (error || !result) return null;
+        return JSON.parse(result as string) as Room;
+      })
+      .filter((room): room is Room => room !== null);
+
+    rawRooms = null;
+
+    return rooms;
+  } catch (error) {
+    console.error('Error al obtener salas por id en cache:', error);
+    throw new AppError('Error un error al intentar buscar salas.', 500);
+  }
+}
+
+export const roomsRepository = {
+  createRoom,
+  updateRoom,
+  deleteRoom,
+  setRoomCache,
+  getActiveRooms,
+  getAvailableRooms,
+  getRoomsByIds,
+};
+
+//getRoomById, siempre y cuando el ttl > 0
