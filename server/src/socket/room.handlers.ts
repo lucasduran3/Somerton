@@ -3,7 +3,7 @@ import redis from '../db/redis.js';
 import { CreateRoomData, Message, Room } from '../types/socket.types.js';
 import { randomUUID } from 'crypto';
 import { generateUniqueName } from '../utils/uniqueNameGenerator.js';
-import * as roomsRepository from '../repositories/rooms.repository.js';
+import { roomsRepository } from '../repositories/rooms.repository.js';
 import { AppError } from '../shared/errors/AppError.js';
 
 export function registerRoomHandlers(io: Server, socket: Socket) {

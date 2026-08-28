@@ -67,6 +67,10 @@ async function getAvailableRooms(
   return await redis.zrevrange('rooms:available', start, end);
 }
 
+async function getTotalOfRooms(onlyAvailable: boolean): Promise<number> {
+  return await redis.zcard(onlyAvailable ? 'rooms:available' : 'rooms:active');
+}
+
 async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
   if (roomsIds.length === 0) return [];
 
@@ -102,6 +106,7 @@ export const roomsRepository = {
   setRoomCache,
   getActiveRooms,
   getAvailableRooms,
+  getTotalOfRooms,
   getRoomsByIds,
 };
 

@@ -1,23 +1,21 @@
 import { roomsRepository } from '../repositories/rooms.repository.js';
 import { Room } from '../types/socket.types.js';
-
-async function getAllRooms(page: number, pageSize: number): Promise<Room[]> {
-  if (pageSize <= 0 || page <= 0) return [];
-  const start = (page - 1) * pageSize;
-  const end = start + pageSize - 1;
-
-  const roomsIds = await roomsRepository.getActiveRooms(start, end);
-  return await roomsRepository.getRoomsByIds(roomsIds);
-}
+import { PaginatedResult } from '../types/pagination.types.js';
 
 async function searchRooms(filters: {
   movieTitle?: string;
   isAvailable?: boolean;
   page: number;
   pageSize: number;
-}): Promise<Room[]> {
-  if (filters.pageSize <= 0 || filters.page <= 0) return [];
-
+}): Promise<PaginatedResult<Room>> {
+  if (filters.pageSize <= 0 || filters.page <= 0) {
+    return {
+      data: [],
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total: 0,
+    };
+  }
   const start = (filters.page - 1) * filters.pageSize;
   const end = start + filters.pageSize - 1;
 
@@ -31,24 +29,38 @@ async function searchRooms(filters: {
       room.movie.title.toLowerCase().includes(query),
     );
 
-    return filteredRooms.slice(start, start + filters.pageSize);
+    return {
+      data: filteredRooms.slice(start, start + filters.pageSize),
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total: filteredRooms.length,
+    };
   }
 
-  const roomsIds = await getRoomIdsIndex(filters.isAvailable, start, end);
-  return await roomsRepository.getRoomsByIds(roomsIds);
+  const [roomsIds, total] = await Promise.all([
+    getRoomIdsIndex(filters.isAvailable, start, end),
+    roomsRepository.getTotalOfRooms(filters.isAvailable ?? false),
+  ]);
+  const hydratedRooms = await roomsRepository.getRoomsByIds(roomsIds);
+
+  return {
+    data: hydratedRooms,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    total: total,
+  };
 }
 
 async function getRoomIdsIndex(
-  isAvailable: boolean | undefined,
+  onlyAvailable: boolean | undefined,
   start: number,
   end: number,
 ): Promise<string[]> {
-  return isAvailable
+  return onlyAvailable
     ? roomsRepository.getAvailableRooms(start, end)
     : roomsRepository.getActiveRooms(start, end);
 }
 
 export const roomsService = {
-  getAllRooms,
   searchRooms,
 };

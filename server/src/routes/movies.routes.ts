@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { moviesService } from '../service/movies.service.js';
-import { searchMoviesSchema } from '../schemas/movie.schemas.js';
+import { searchMoviesSchema } from '../schemas/movies.schemas.js';
 
 const router = Router();
 
