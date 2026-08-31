@@ -99,6 +99,19 @@ async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
   }
 }
 
+async function getRoomById(roomId: string): Promise<Room> {
+  const room = await redis.get(`room:${roomId}`);
+  if (!room) {
+    throw new AppError('The room does not exist.', 404);
+  }
+  return JSON.parse(room);
+}
+
+async function movieAlreadyTaken(movieId: number): Promise<boolean> {
+  const movieKey = await redis.get(`room:movie:${movieId}`);
+  return movieKey !== null;
+}
+
 export const roomsRepository = {
   createRoom,
   updateRoom,
@@ -108,6 +121,6 @@ export const roomsRepository = {
   getAvailableRooms,
   getTotalOfRooms,
   getRoomsByIds,
+  getRoomById,
+  movieAlreadyTaken,
 };
-
-//getRoomById, siempre y cuando el ttl > 0
