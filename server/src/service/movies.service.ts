@@ -13,7 +13,7 @@ import {
 
 //---- funciones publicas ----
 async function searchMovies(params: SearchMoviesParams): Promise<TmdbResponse> {
-  const cacheKey = `movies:search:${params.query ?? ''}:${params.genre ?? ''}:${params.yearFrom ?? ''}:${params.yearTo ?? ''}:${params.page ?? 1}`;
+  const cacheKey = `movies:search:${params.query ?? ''}:${params.year ?? ''}:${params.page ?? 1}`;
   const cached = await getSearchIndexFromCache(cacheKey);
 
   if (cached) {
@@ -45,42 +45,26 @@ async function searchMovies(params: SearchMoviesParams): Promise<TmdbResponse> {
   if (params.query) {
     data = await tmdbClient.get<TmdbResponse>('/search/movie', {
       query: params.query,
+      ...(params.year && { year: params.year }),
       page: params.page ?? 1,
     });
-
-    if (params.yearFrom || params.yearTo) {
-      const from = parseInt(params.yearFrom ?? '0');
-      const to = parseInt(params.yearTo ?? '9999');
-
-      data.results = data.results.filter((movie) => {
-        const movieYear = parseInt(movie.release_date.split('-')[0]);
-        return movieYear >= from && movieYear <= to;
-      });
-    }
-
-    if (params.genre) {
-      data.results = data.results.filter((movie) =>
-        movie.genre_ids.includes(params.genre!),
-      );
-    }
   } else {
     data = await tmdbClient.get<TmdbResponse>('/discover/movie', {
-      ...(params.genre && { with_genres: params.genre }),
-      ...(params.yearFrom && {
-        'primary_release_date.gte': `${params.yearFrom}-01-01`,
-      }),
-      ...(params.yearTo && {
-        'primary_release_date.lte': `${params.yearTo}-12-31`,
+      ...(params.year && {
+        year: params.year,
       }),
       page: params.page ?? 1,
     });
   }
-  const currentYear = new Date().getFullYear();
-  const ttl = params.yearTo === currentYear.toString() ? 3600 : 86400 * 7;
 
   const pipeline = redis.pipeline();
   data.results.forEach((movie) => {
-    pipeline.set(`movies:id:${movie.id}`, JSON.stringify(movie), 'EX', ttl);
+    pipeline.set(
+      `movies:id:${movie.id}`,
+      JSON.stringify(movie),
+      'EX',
+      getMovieTTL(new Date(movie.release_date).getFullYear()),
+    );
   });
 
   const index: SearchIndex = {
@@ -89,7 +73,8 @@ async function searchMovies(params: SearchMoviesParams): Promise<TmdbResponse> {
     total_pages: data.total_pages,
     total_results: data.total_results,
   };
-  pipeline.set(cacheKey, JSON.stringify(index), 'EX', ttl);
+  const searchIndexTTL = getCacheTTL(params);
+  pipeline.set(cacheKey, JSON.stringify(index), 'EX', searchIndexTTL);
 
   try {
     await pipeline.exec();
@@ -131,6 +116,19 @@ async function getGenreById(genreId: number): Promise<Genre> {
 }
 
 //---- funciones privadas (helpers) ----
+
+function getCacheTTL(params: SearchMoviesParams): number {
+  const currentYear = new Date().getFullYear();
+  const isCurrentYear = params.year === currentYear;
+
+  return isCurrentYear || params.query ? 3600 : 86400 * 7;
+}
+
+function getMovieTTL(releaseYear: number): number {
+  const currentYear = new Date().getFullYear();
+  if (Number.isNaN(releaseYear)) return 86400 * 7; // sin fecha confirmada, tratar como estable
+  return releaseYear === currentYear ? 86400 : 86400 * 7;
+}
 
 async function getSearchIndexFromCache(
   key: string,
@@ -180,11 +178,7 @@ async function getMovieFromTMDB(movieId: number): Promise<Movie> {
 }
 
 async function saveMovieInCache(movie: Movie) {
-  const ttl =
-    new Date(movie.release_date).getFullYear() === new Date().getFullYear()
-      ? 86400
-      : 86400 * 7;
-
+  const ttl = getMovieTTL(new Date(movie.release_date).getFullYear());
   await redis.set(`movies:id:${movie.id}`, JSON.stringify(movie), 'EX', ttl);
 }
 

@@ -23,9 +23,7 @@ export interface SearchIndex {
 
 export interface SearchMoviesParams {
   query?: string;
-  genre?: number;
-  yearFrom?: string;
-  yearTo?: string;
+  year?: number;
   page?: number;
 }
 
