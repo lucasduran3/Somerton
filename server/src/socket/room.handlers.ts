@@ -4,26 +4,70 @@ import { randomUUID } from 'crypto';
 import { generateUniqueName } from '../utils/uniqueNameGenerator.js';
 import { roomsRepository } from '../repositories/rooms.repository.js';
 import { AppError } from '../shared/errors/AppError.js';
+import { moviesService } from '../service/movies.service.js';
+import {
+  createRoomSchema,
+  roomIdSchema,
+  kickUserSchema,
+  sendMessageSchema,
+} from '../schemas/rooms.schemas.js';
+import z from 'zod';
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
-  socket.on('room:create', (data: CreateRoomData) =>
-    createRoomHandler(socket, data),
+  socket.on(
+    'room:create',
+    validateAndHandle(
+      socket,
+      createRoomSchema,
+      'Invalid data for creating the room.',
+      (data) => createRoomHandler(socket, data),
+    ),
   );
-  socket.on('room:join', (data: { roomId: string }) =>
-    joinRoomHandler(socket, data),
+  socket.on(
+    'room:join',
+    validateAndHandle(
+      socket,
+      roomIdSchema,
+      'Invalid data for joining the room.',
+      (data) => joinRoomHandler(socket, data),
+    ),
   );
-  socket.on('room:leave', (data: { roomId: string }) =>
-    leaveRoomHandler(io, socket, data),
+  socket.on(
+    'room:leave',
+    validateAndHandle(
+      socket,
+      roomIdSchema,
+      'Invalid data for leaving the room.',
+      (data) => leaveRoomHandler(io, socket, data),
+    ),
   );
-  socket.on('room:delete', (data: { roomId: string }) =>
-    deleteRoomHandler(io, socket, data),
+  socket.on(
+    'room:delete',
+    validateAndHandle(
+      socket,
+      roomIdSchema,
+      'Invalid data for deleting the room.',
+      (data) => deleteRoomHandler(io, socket, data),
+    ),
   );
-  socket.on('message:send', (data: { roomId: string; text: string }) =>
-    sendMessageHandler(io, socket, data),
+  socket.on(
+    'message:send',
+    validateAndHandle(
+      socket,
+      sendMessageSchema,
+      'Invalid data for sending a message.',
+      (data) => sendMessageHandler(io, socket, data),
+    ),
   );
-  socket.on('room:kick', (data: { roomId: string; userToRemove: string }) => {
-    kickUserHandler(io, socket, data);
-  });
+  socket.on(
+    'room:kick',
+    validateAndHandle(
+      socket,
+      kickUserSchema,
+      'Invalid data for kicking an user.',
+      (data) => kickUserHandler(io, socket, data),
+    ),
+  );
   socket.on('disconnect', async () => {
     const roomId = socket.data.roomId;
     await disconnectFromRoom(io, socket, roomId);
@@ -31,7 +75,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 }
 
 /*
-  ---------- HANDLERS ------------
+  ---------- HANDLERS -----------
  */
 async function createRoomHandler(socket: Socket, data: CreateRoomData) {
   if (socket.rooms.size > 1) {
@@ -41,7 +85,7 @@ async function createRoomHandler(socket: Socket, data: CreateRoomData) {
     return;
   }
 
-  const movieTaken = await roomsRepository.movieAlreadyTaken(data.movie.id);
+  const movieTaken = await roomsRepository.movieAlreadyTaken(data.movieId);
   if (movieTaken) {
     socket.emit('room:movie-taken', {
       message: 'There is already a room for this movie.',
@@ -49,26 +93,31 @@ async function createRoomHandler(socket: Socket, data: CreateRoomData) {
     return;
   }
 
-  socket.data.username = generateUniqueName([]);
-
-  const room: Room = {
-    id: randomUUID(),
-    movie: data.movie,
-    duration: data.duration,
-    maxUsers: data.maxUsers,
-    ownerId: socket.data.username,
-    users: [socket.data.username],
-    messages: [],
-    createdAt: Date.now(),
-  };
-
+  //Buscar pelicula con movies.service
   try {
+    const movie = await moviesService.getMovieById(data.movieId);
+    socket.data.username = generateUniqueName([]);
+
+    const room: Room = {
+      id: randomUUID(),
+      movie: movie,
+      duration: data.duration,
+      maxUsers: data.maxUsers,
+      ownerId: socket.data.username,
+      users: [socket.data.username],
+      messages: [],
+      createdAt: Date.now(),
+    };
+
     await roomsRepository.createRoom(room);
     await socket.join(room.id);
     socket.emit('room:created', room);
     socket.data.roomId = room.id;
   } catch (error) {
-    socket.emit('room:error', { message: 'Error creating room' });
+    socket.emit('room:error', {
+      message:
+        error instanceof AppError ? error.message : 'Error creating room.',
+    });
   }
 }
 
@@ -290,8 +339,25 @@ async function kickUserHandler(
 }
 
 /*
-  ------------- HELPERS -----------
+  ------------ HELPERS -----------
  */
+
+function validateAndHandle<T>(
+  socket: Socket,
+  schema: z.ZodType<T>,
+  errorMessage: string,
+  handler: (data: T) => void,
+) {
+  return (rawData: unknown) => {
+    const parsed = schema.safeParse(rawData);
+    if (!parsed.success) {
+      socket.emit('room:error', { message: errorMessage });
+      return;
+    }
+    handler(parsed.data);
+  };
+}
+
 async function closeRoom(io: Server, room: Room) {
   await roomsRepository.deleteRoom(room.id, room.movie.id);
   io.in(room.id).emit('room:closed');

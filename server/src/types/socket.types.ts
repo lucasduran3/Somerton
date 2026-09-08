@@ -18,7 +18,7 @@ export interface Room {
 }
 
 export interface CreateRoomData {
-  movie: Movie;
+  movieId: number;
   duration: number;
   maxUsers: number;
 }
