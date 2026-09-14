@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket, io } from 'socket.io-client';
-import { roomsRepository } from '../repositories/rooms.repository.js';
+import * as roomsRepository from '../repositories/rooms.repository.js';
 import { registerRoomHandlers } from '../socket/room.handlers.js';
 
 vi.mock('../repositories/rooms.repository.js');

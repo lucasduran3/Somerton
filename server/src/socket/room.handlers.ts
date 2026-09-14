@@ -2,9 +2,9 @@ import { Server, Socket } from 'socket.io';
 import { CreateRoomData, Message, Room } from '../types/socket.types.js';
 import { randomUUID } from 'crypto';
 import { generateUniqueName } from '../utils/uniqueNameGenerator.js';
-import { roomsRepository } from '../repositories/rooms.repository.js';
+import * as roomsRepository from '../repositories/rooms.repository.js';
 import { AppError } from '../shared/errors/AppError.js';
-import { moviesService } from '../service/movies.service.js';
+import { getMovieById } from '../service/movies.service.js';
 import {
   createRoomSchema,
   roomIdSchema,
@@ -95,7 +95,7 @@ async function createRoomHandler(socket: Socket, data: CreateRoomData) {
 
   //Buscar pelicula con movies.service
   try {
-    const movie = await moviesService.getMovieById(data.movieId);
+    const movie = await getMovieById(data.movieId);
     socket.data.username = generateUniqueName([]);
 
     const room: Room = {

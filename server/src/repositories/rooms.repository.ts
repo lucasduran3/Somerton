@@ -2,7 +2,7 @@ import { Room } from '../types/socket.types.js';
 import redis from '../db/redis.js';
 import { AppError } from '../shared/errors/AppError.js';
 
-async function createRoom(room: Room): Promise<void> {
+export async function createRoom(room: Room): Promise<void> {
   const multi = redis.multi();
   multi.set(`room:${room.id}`, JSON.stringify(room), 'EX', room.duration * 60);
   multi.set(`room:movie:${room.movie.id}`, room.id, 'EX', room.duration * 60);
@@ -15,7 +15,10 @@ async function createRoom(room: Room): Promise<void> {
   await multi.exec();
 }
 
-async function deleteRoom(roomId: string, movieId: number): Promise<void> {
+export async function deleteRoom(
+  roomId: string,
+  movieId: number,
+): Promise<void> {
   await redis
     .multi()
     .del(`room:${roomId}`, `room:movie:${movieId}`)
@@ -24,7 +27,7 @@ async function deleteRoom(roomId: string, movieId: number): Promise<void> {
     .exec();
 }
 
-async function setRoomCache(room: Room): Promise<void> {
+export async function setRoomCache(room: Room): Promise<void> {
   const ttl = await redis.ttl(`room:${room.id}`);
 
   if (ttl < 0) {
@@ -34,7 +37,7 @@ async function setRoomCache(room: Room): Promise<void> {
   await redis.set(`room:${room.id}`, JSON.stringify(room), 'EX', ttl, 'XX');
 }
 
-async function updateRoom(room: Room): Promise<void> {
+export async function updateRoom(room: Room): Promise<void> {
   const ttl = await redis.ttl(`room:${room.id}`);
 
   if (ttl < 0) {
@@ -56,22 +59,25 @@ async function updateRoom(room: Room): Promise<void> {
   await multi.exec();
 }
 
-async function getActiveRooms(start: number, end: number): Promise<string[]> {
+export async function getActiveRooms(
+  start: number,
+  end: number,
+): Promise<string[]> {
   return await redis.zrevrange('rooms:active', start, end);
 }
 
-async function getAvailableRooms(
+export async function getAvailableRooms(
   start: number,
   end: number,
 ): Promise<string[]> {
   return await redis.zrevrange('rooms:available', start, end);
 }
 
-async function getTotalOfRooms(onlyAvailable: boolean): Promise<number> {
+export async function getTotalOfRooms(onlyAvailable: boolean): Promise<number> {
   return await redis.zcard(onlyAvailable ? 'rooms:available' : 'rooms:active');
 }
 
-async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
+export async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
   if (roomsIds.length === 0) return [];
 
   const pipeline = redis.pipeline();
@@ -99,7 +105,7 @@ async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
   }
 }
 
-async function getRoomById(roomId: string): Promise<Room> {
+export async function getRoomById(roomId: string): Promise<Room> {
   const room = await redis.get(`room:${roomId}`);
   if (!room) {
     throw new AppError('The room does not exist.', 404);
@@ -107,20 +113,7 @@ async function getRoomById(roomId: string): Promise<Room> {
   return JSON.parse(room);
 }
 
-async function movieAlreadyTaken(movieId: number): Promise<boolean> {
+export async function movieAlreadyTaken(movieId: number): Promise<boolean> {
   const movieKey = await redis.get(`room:movie:${movieId}`);
   return movieKey !== null;
 }
-
-export const roomsRepository = {
-  createRoom,
-  updateRoom,
-  deleteRoom,
-  setRoomCache,
-  getActiveRooms,
-  getAvailableRooms,
-  getTotalOfRooms,
-  getRoomsByIds,
-  getRoomById,
-  movieAlreadyTaken,
-};

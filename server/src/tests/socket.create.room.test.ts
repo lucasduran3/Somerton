@@ -1,8 +1,8 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
-import { roomsRepository } from '../repositories/rooms.repository.js';
-import { moviesService } from '../service/movies.service.js';
+import * as roomsRepository from '../repositories/rooms.repository.js';
+import { getMovieById } from '../service/movies.service.js';
 import { registerRoomHandlers } from '../socket/room.handlers.js';
 
 vi.mock('../repositories/rooms.repository.js');
@@ -37,7 +37,7 @@ describe('room:create:event', () => {
 
   it('should create a room and emit room:created with valid data', () => {
     return new Promise<void>((resolve) => {
-      vi.mocked(moviesService.getMovieById).mockResolvedValue({
+      vi.mocked(getMovieById).mockResolvedValue({
         id: 1,
         title: 'Test Movie',
         overview: '',
@@ -65,7 +65,7 @@ describe('room:create:event', () => {
 
   it('should emit room:movie-taken when a room with that movie already exists', () => {
     return new Promise<void>((resolve) => {
-      vi.mocked(moviesService.getMovieById).mockResolvedValue({
+      vi.mocked(getMovieById).mockResolvedValue({
         id: 1,
         title: 'Test Movie',
         overview: '',

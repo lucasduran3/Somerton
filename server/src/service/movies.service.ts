@@ -12,7 +12,9 @@ import {
 } from '../types/tmdb.types.js';
 
 //---- funciones publicas ----
-async function searchMovies(params: SearchMoviesParams): Promise<TmdbResponse> {
+export async function searchMovies(
+  params: SearchMoviesParams,
+): Promise<TmdbResponse> {
   const cacheKey = `movies:search:${params.query ?? ''}:${params.year ?? ''}:${params.page ?? 1}`;
   const cached = await getSearchIndexFromCache(cacheKey);
 
@@ -85,7 +87,7 @@ async function searchMovies(params: SearchMoviesParams): Promise<TmdbResponse> {
   return data;
 }
 
-async function getMovieById(movieId: number): Promise<Movie> {
+export async function getMovieById(movieId: number): Promise<Movie> {
   const cached = await redis.get(`movies:id:${movieId}`);
   if (cached) return JSON.parse(cached);
 
@@ -93,7 +95,7 @@ async function getMovieById(movieId: number): Promise<Movie> {
   return await getMovieFromTMDB(movieId);
 }
 
-async function getGenres(): Promise<Genre[]> {
+export async function getGenres(): Promise<Genre[]> {
   const cached = await redis.get('movies:genres');
   if (cached) return JSON.parse(cached);
 
@@ -108,7 +110,7 @@ async function getGenres(): Promise<Genre[]> {
   return genresResponse.genres;
 }
 
-async function getGenreById(genreId: number): Promise<Genre> {
+export async function getGenreById(genreId: number): Promise<Genre> {
   const genres = await getGenres();
   const genre = genres.find((g) => g.id === genreId);
   if (!genre) throw new AppError('Género no encontrado', 404);
@@ -181,10 +183,3 @@ async function saveMovieInCache(movie: Movie) {
   const ttl = getMovieTTL(new Date(movie.release_date).getFullYear());
   await redis.set(`movies:id:${movie.id}`, JSON.stringify(movie), 'EX', ttl);
 }
-
-export const moviesService = {
-  getGenres,
-  searchMovies,
-  getMovieById,
-  getGenreById,
-};

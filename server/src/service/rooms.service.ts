@@ -1,8 +1,8 @@
-import { roomsRepository } from '../repositories/rooms.repository.js';
+import * as roomsRepository from '../repositories/rooms.repository.js';
 import { Room } from '../types/socket.types.js';
 import { PaginatedResult } from '../types/pagination.types.js';
 
-async function searchRooms(filters: {
+export async function searchRooms(filters: {
   movieTitle?: string;
   isAvailable?: boolean;
   page: number;
@@ -60,7 +60,3 @@ async function getRoomIdsIndex(
     ? roomsRepository.getAvailableRooms(start, end)
     : roomsRepository.getActiveRooms(start, end);
 }
-
-export const roomsService = {
-  searchRooms,
-};
