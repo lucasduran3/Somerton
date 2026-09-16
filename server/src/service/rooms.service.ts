@@ -1,5 +1,5 @@
 import * as roomsRepository from '../repositories/rooms.repository.js';
-import { Room } from '../types/socket.types.js';
+import { RoomSummary } from '../types/socket.types.js';
 import { PaginatedResult } from '../types/pagination.types.js';
 
 export async function searchRooms(filters: {
@@ -7,7 +7,7 @@ export async function searchRooms(filters: {
   isAvailable?: boolean;
   page: number;
   pageSize: number;
-}): Promise<PaginatedResult<Room>> {
+}): Promise<PaginatedResult<RoomSummary>> {
   if (filters.pageSize <= 0 || filters.page <= 0) {
     return {
       data: [],
@@ -26,7 +26,7 @@ export async function searchRooms(filters: {
     const query = filters.movieTitle.toLowerCase();
 
     const filteredRooms = hydratedRooms.filter((room) =>
-      room.movie.title.toLowerCase().includes(query),
+      room.movieTitle.toLowerCase().includes(query),
     );
 
     return {

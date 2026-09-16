@@ -17,6 +17,13 @@ export interface Room {
   createdAt: number;
 }
 
+export interface RoomSummary {
+  id: string;
+  movieTitle: string;
+  isAvailable: boolean;
+  remainingTime: number;
+}
+
 export interface CreateRoomData {
   movieId: number;
   duration: number;

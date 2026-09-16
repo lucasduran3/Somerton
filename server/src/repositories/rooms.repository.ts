@@ -1,4 +1,4 @@
-import { Room } from '../types/socket.types.js';
+import { Room, RoomSummary } from '../types/socket.types.js';
 import redis from '../db/redis.js';
 import { AppError } from '../shared/errors/AppError.js';
 
@@ -77,28 +77,47 @@ export async function getTotalOfRooms(onlyAvailable: boolean): Promise<number> {
   return await redis.zcard(onlyAvailable ? 'rooms:available' : 'rooms:active');
 }
 
-export async function getRoomsByIds(roomsIds: string[]): Promise<Room[]> {
+export async function getRoomsByIds(
+  roomsIds: string[],
+): Promise<RoomSummary[]> {
   if (roomsIds.length === 0) return [];
 
   const pipeline = redis.pipeline();
   roomsIds.forEach((id) => {
-    pipeline.get(`room:${id}`);
+    pipeline.get(`room:${id}`).ttl(`room:${id}`);
   });
 
   try {
     let rawRooms = await pipeline.exec();
     if (!rawRooms) return [];
 
-    const rooms = rawRooms
-      .map(([error, result]) => {
-        if (error || !result) return null;
-        return JSON.parse(result as string) as Room;
-      })
-      .filter((room): room is Room => room !== null);
+    const roomsSummary: RoomSummary[] = [];
+
+    for (let i = 0; i < rawRooms.length; i += 2) {
+      const [getError, rawRoom] = rawRooms[i];
+      const [ttlError, ttl] = rawRooms[i + 1];
+
+      const isValid =
+        !getError &&
+        !ttlError &&
+        typeof rawRoom === 'string' &&
+        typeof ttl === 'number' &&
+        ttl > 0;
+
+      if (isValid) {
+        const room = JSON.parse(rawRoom) as Room;
+        roomsSummary.push({
+          id: room.id,
+          isAvailable: room.users.length < room.maxUsers,
+          movieTitle: room.movie.title,
+          remainingTime: Math.floor(ttl / 60),
+        });
+      }
+    }
 
     rawRooms = null;
 
-    return rooms;
+    return roomsSummary;
   } catch (error) {
     console.error('Error al obtener salas por id en cache:', error);
     throw new AppError('Error un error al intentar buscar salas.', 500);
