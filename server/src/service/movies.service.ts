@@ -13,11 +13,14 @@ import {
   TmdbResponse,
 } from '../types/tmdb.types.js';
 
+const TRENDING_TIME_WINDOW = 'week';
+
 //---- funciones publicas ----
 export async function searchMovies(
   params: SearchMoviesParams,
 ): Promise<MovieSearchResponse> {
-  const cacheKey = `movies:search:${params.query ?? ''}:${params.year ?? ''}:${params.page ?? 1}`;
+  const mode = params.query ? 'search' : params.year ? 'discover' : 'trending';
+  const cacheKey = `movies:${mode}:${params.query ?? ''}:${params.year ?? ''}:${params.page ?? 1}`;
   const cached = await getSearchIndexFromCache(cacheKey);
 
   let movies: Movie[];
@@ -46,7 +49,6 @@ export async function searchMovies(
       total_pages: cached.total_pages,
       total_results: cached.total_results,
     };
-    
   } else {
     let data;
     //Si no esta en cache, consultamos a tmdb directo
@@ -56,13 +58,16 @@ export async function searchMovies(
         ...(params.year && { year: params.year }),
         page: params.page ?? 1,
       });
-    } else {
+    } else if (params.year) {
       data = await tmdbClient.get<TmdbResponse>('/discover/movie', {
-        ...(params.year && {
-          year: params.year,
-        }),
+        year: params.year,
         page: params.page ?? 1,
       });
+    } else {
+      data = await tmdbClient.get<TmdbResponse>(
+        `/trending/movie/${TRENDING_TIME_WINDOW}`,
+        { page: params.page ?? 1 },
+      );
     }
 
     const pipeline = redis.pipeline();
