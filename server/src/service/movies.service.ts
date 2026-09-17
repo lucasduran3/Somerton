@@ -6,6 +6,8 @@ import {
   GenreResponse,
   Movie,
   MovieDetail,
+  MovieSearchResponse,
+  MovieSearchResult,
   SearchIndex,
   SearchMoviesParams,
   TmdbResponse,
@@ -14,9 +16,12 @@ import {
 //---- funciones publicas ----
 export async function searchMovies(
   params: SearchMoviesParams,
-): Promise<TmdbResponse> {
+): Promise<MovieSearchResponse> {
   const cacheKey = `movies:search:${params.query ?? ''}:${params.year ?? ''}:${params.page ?? 1}`;
   const cached = await getSearchIndexFromCache(cacheKey);
+
+  let movies: Movie[];
+  let paginationInfo: Omit<TmdbResponse, 'results'>;
 
   if (cached) {
     const cachedMovies = await substractMoviesFromSearchIndex(cached);
@@ -35,56 +40,69 @@ export async function searchMovies(
       })
       .filter((movie): movie is Movie => movie != undefined);
 
-    return {
+    movies = results;
+    paginationInfo = {
       page: cached.page,
-      results: results,
       total_pages: cached.total_pages,
       total_results: cached.total_results,
     };
-  }
-  let data;
-  //Si no esta en cache, consultamos a tmdb directo
-  if (params.query) {
-    data = await tmdbClient.get<TmdbResponse>('/search/movie', {
-      query: params.query,
-      ...(params.year && { year: params.year }),
-      page: params.page ?? 1,
-    });
+    
   } else {
-    data = await tmdbClient.get<TmdbResponse>('/discover/movie', {
-      ...(params.year && {
-        year: params.year,
-      }),
-      page: params.page ?? 1,
+    let data;
+    //Si no esta en cache, consultamos a tmdb directo
+    if (params.query) {
+      data = await tmdbClient.get<TmdbResponse>('/search/movie', {
+        query: params.query,
+        ...(params.year && { year: params.year }),
+        page: params.page ?? 1,
+      });
+    } else {
+      data = await tmdbClient.get<TmdbResponse>('/discover/movie', {
+        ...(params.year && {
+          year: params.year,
+        }),
+        page: params.page ?? 1,
+      });
+    }
+
+    const pipeline = redis.pipeline();
+    data.results.forEach((movie) => {
+      pipeline.set(
+        `movies:id:${movie.id}`,
+        JSON.stringify(movie),
+        'EX',
+        getMovieTTL(new Date(movie.release_date).getFullYear()),
+      );
     });
+
+    const index: SearchIndex = {
+      ids: data.results.map((m) => m.id),
+      page: data.page,
+      total_pages: data.total_pages,
+      total_results: data.total_results,
+    };
+    const searchIndexTTL = getCacheTTL(params);
+    pipeline.set(cacheKey, JSON.stringify(index), 'EX', searchIndexTTL);
+
+    movies = data.results;
+    paginationInfo = {
+      page: data.page,
+      total_pages: data.total_pages,
+      total_results: data.total_results,
+    };
+    try {
+      await pipeline.exec();
+    } catch (error) {
+      console.error('Error al guardar en cache:', error);
+    }
   }
 
-  const pipeline = redis.pipeline();
-  data.results.forEach((movie) => {
-    pipeline.set(
-      `movies:id:${movie.id}`,
-      JSON.stringify(movie),
-      'EX',
-      getMovieTTL(new Date(movie.release_date).getFullYear()),
-    );
-  });
+  const moviesWithAvailability = await attachAvailability(movies);
 
-  const index: SearchIndex = {
-    ids: data.results.map((m) => m.id),
-    page: data.page,
-    total_pages: data.total_pages,
-    total_results: data.total_results,
+  return {
+    results: moviesWithAvailability,
+    ...paginationInfo,
   };
-  const searchIndexTTL = getCacheTTL(params);
-  pipeline.set(cacheKey, JSON.stringify(index), 'EX', searchIndexTTL);
-
-  try {
-    await pipeline.exec();
-  } catch (error) {
-    console.error('Error al guardar en cache:', error);
-  }
-
-  return data;
 }
 
 export async function getMovieById(movieId: number): Promise<Movie> {
@@ -117,7 +135,21 @@ export async function getGenreById(genreId: number): Promise<Genre> {
   return genre;
 }
 
-//---- funciones privadas (helpers) ----
+//---- helpers -----
+
+async function attachAvailability(
+  movies: Movie[],
+): Promise<MovieSearchResult[]> {
+  if (movies.length === 0) return [];
+
+  const keys = movies.map((movie) => `room:movie:${movie.id}`);
+  const values = await redis.mget(keys);
+
+  return movies.map((movie, i) => ({
+    ...movie,
+    isInUse: values[i] !== null,
+  }));
+}
 
 function getCacheTTL(params: SearchMoviesParams): number {
   const currentYear = new Date().getFullYear();
